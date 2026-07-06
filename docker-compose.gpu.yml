@@ -1,0 +1,32 @@
+services:
+  callrobot-gpu:
+    build:
+      context: .
+      dockerfile: gpu_server/Dockerfile
+    image: callrobot-gpu:latest
+    container_name: callrobot-gpu
+    restart: unless-stopped
+    shm_size: "16gb"
+    ipc: host
+    ports:
+      - "9000:9000"
+    environment:
+      CUDA_VISIBLE_DEVICES: "0"
+      MODEL_DIR: /models
+      QWEN_MODEL: /models/Qwen2.5-7B-Instruct
+      FUNASR_MODEL: /models/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online
+      FUNASR_VAD_MODEL: /models/speech_fsmn_vad_zh-cn-16k-common-pytorch
+      FUNASR_PUNC_MODEL: /models/punc_ct-transformer_zh-cn-common-vocab272727-pytorch
+      COSYVOICE_MODEL: /models/CosyVoice-300M-SFT
+      COSYVOICE_SPK: 中文女
+      GPU_SERVER_HOST: 0.0.0.0
+      GPU_SERVER_PORT: "9000"
+    volumes:
+      - ./models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
