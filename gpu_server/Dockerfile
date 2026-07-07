@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 python3.10-dev python3-pip git git-lfs ffmpeg libsndfile1 \
+    python3.10 python3.10-dev python3-pip git git-lfs ffmpeg libsndfile1 sox \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -13,6 +13,11 @@ WORKDIR /app
 COPY requirements-gpu.txt /app/requirements-gpu.txt
 RUN python3.10 -m pip install --upgrade pip setuptools wheel \
     && python3.10 -m pip install -r /app/requirements-gpu.txt
+
+COPY third_party /app/third_party
+RUN if [ -f /app/third_party/CosyVoice/requirements.txt ]; then \
+      python3.10 -m pip install -r /app/third_party/CosyVoice/requirements.txt; \
+    fi
 
 COPY gpu_server /app/gpu_server
 

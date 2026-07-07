@@ -25,6 +25,173 @@ docker compose -f docker-compose.gpu.yml up
 curl http://GPU_SERVER_IP:9000/health
 ```
 
+## NVIDIA 4090 24G 服务器部署
+
+4090 24G 建议优先用裸机 Python venv 部署，调试 CosyVoice、CUDA、vLLM 更直接。Docker 也支持，但需要先把官方 CosyVoice 仓库准备到 `third_party/CosyVoice`。
+
+### 1. 服务器基础检查
+
+在 4090 服务器上确认驱动和 CUDA 可用：
+
+```bash
+nvidia-smi
+```
+
+建议环境：
+
+- Ubuntu 22.04/24.04
+- NVIDIA Driver 支持 CUDA 12.x
+- Python 3.10 或 3.11。Python 3.12 依赖兼容性更容易出问题。
+
+安装系统依赖：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git git-lfs ffmpeg sox libsndfile1 python3-venv python3-dev build-essential
+```
+
+### 2. 拉取项目
+
+```bash
+git clone YOUR_REPO_URL CallRobot
+cd CallRobot
+```
+
+如果你还没有上传 GitHub，也可以把项目目录 scp 到服务器。
+
+### 3. 准备 Python 环境
+
+```bash
+python3 -m venv .venv-gpu
+source .venv-gpu/bin/activate
+bash gpu_server/scripts/install_4090.sh
+```
+
+`install_4090.sh` 会安装 GPU 侧依赖，并把官方 CosyVoice clone 到：
+
+```text
+third_party/CosyVoice
+```
+
+### 4. 准备模型
+
+默认模型目录：
+
+```text
+./models
+```
+
+如果服务器网络可用：
+
+```bash
+MODEL_DIR=./models python gpu_server/scripts/download_models.py
+```
+
+如果你已经有模型文件，建议目录结构保持：
+
+```text
+models/
+  Qwen2.5-7B-Instruct/
+  speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online/
+  speech_fsmn_vad_zh-cn-16k-common-pytorch/
+  punc_ct-transformer_zh-cn-common-vocab272727-pytorch/
+  CosyVoice-300M-SFT/
+```
+
+如果使用 7B-AWQ：
+
+```bash
+export QWEN_MODEL=/path/to/Qwen2.5-7B-Instruct-AWQ
+export QWEN_QUANTIZATION=awq
+```
+
+4090 24G 通常可以优先尝试 FP16 的 Qwen2.5-7B-Instruct：
+
+```bash
+export QWEN_MODEL=$PWD/models/Qwen2.5-7B-Instruct
+export QWEN_QUANTIZATION=
+```
+
+### 5. 启动服务
+
+默认监听 `0.0.0.0:9000`：
+
+```bash
+source .venv-gpu/bin/activate
+bash gpu_server/scripts/start_4090.sh
+```
+
+4090 启动脚本默认参数：
+
+```bash
+QWEN_GPU_MEMORY_UTILIZATION=0.82
+QWEN_MAX_MODEL_LEN=8192
+QWEN_MAX_TOKENS=512
+QWEN_MAX_NUM_SEQS=2
+QWEN_MAX_NUM_BATCHED_TOKENS=4096
+QWEN_ENFORCE_EAGER=false
+FUNASR_USE_VAD=false
+```
+
+如果启动 OOM，先降上下文：
+
+```bash
+export QWEN_MAX_MODEL_LEN=4096
+export QWEN_MAX_NUM_BATCHED_TOKENS=2048
+export QWEN_GPU_MEMORY_UTILIZATION=0.76
+bash gpu_server/scripts/start_4090.sh
+```
+
+健康检查：
+
+```bash
+curl http://SERVER_IP:9000/health
+```
+
+如果外网访问不到，检查云服务器安全组和系统防火墙是否放行 TCP `9000`。
+
+### 6. Mac 客户端连接 4090 服务器
+
+文字模式：
+
+```bash
+./mac_client/scripts/run_mac_client.sh \
+  --server ws://SERVER_IP:9000/ws \
+  --no-mic
+```
+
+全双工语音：
+
+```bash
+./mac_client/scripts/run_mac_client.sh \
+  --server ws://SERVER_IP:9000/ws \
+  --input-device 0 \
+  --output-device 1 \
+  --debug-audio
+```
+
+### 7. Docker 部署方式
+
+先准备 CosyVoice 官方仓库：
+
+```bash
+git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git third_party/CosyVoice
+```
+
+构建并启动：
+
+```bash
+docker compose -f docker-compose.gpu.yml build
+docker compose -f docker-compose.gpu.yml up
+```
+
+Docker 方式会挂载：
+
+```text
+./models -> /models
+./third_party/CosyVoice -> /app/third_party/CosyVoice
+```
+
 ## Kaggle Notebook GPU 部署
 
 你的 GPU 服务器如果是 Kaggle Notebook 容器，并且已经通过 frp 把容器内 `8081` 端口暴露到公网，不要用 Docker 部署。直接在 notebook 里安装依赖并启动 `uvicorn` 监听 `0.0.0.0:8081`。
