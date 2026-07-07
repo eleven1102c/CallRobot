@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import threading
 import wave
 from contextlib import suppress
 from dataclasses import dataclass
@@ -75,6 +76,11 @@ class AudioPlayer:
         self.queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=32)
         self._cancel_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        self._playing = threading.Event()
+
+    @property
+    def is_playing(self) -> bool:
+        return self._playing.is_set()
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._run())
@@ -90,6 +96,7 @@ class AudioPlayer:
 
     def clear(self) -> None:
         self._cancel_event.set()
+        self._playing.clear()
         sd.stop()
         while True:
             try:
@@ -112,7 +119,11 @@ class AudioPlayer:
     def _play_blocking(self, audio: np.ndarray, sample_rate: int) -> None:
         if self._cancel_event.is_set():
             return
-        sd.play(audio, samplerate=sample_rate, device=self.output_device, blocking=True)
+        self._playing.set()
+        try:
+            sd.play(audio, samplerate=sample_rate, device=self.output_device, blocking=True)
+        finally:
+            self._playing.clear()
 
 
 def decode_wav(wav_bytes: bytes) -> tuple[np.ndarray, int]:

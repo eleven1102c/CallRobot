@@ -7,10 +7,10 @@ from contextlib import suppress
 from time import monotonic
 from uuid import uuid4
 
-import numpy as np
 import websockets
 
 from callrobot_mac.audio_io import AudioConfig, AudioPlayer, MicCapture, list_devices
+from callrobot_mac.echo_control import EchoController
 from callrobot_mac.protocol import audio_event, control_event, end_utterance_event, parse_server_event, text_event
 from callrobot_mac.vad import FastVadEndpoint
 
@@ -28,9 +28,13 @@ class FullDuplexMacClient:
         session_id: str,
         audio_config: AudioConfig,
         vad_aggressiveness: int,
+        speech_start_ms: int,
         speech_end_ms: int,
         send_chunk_ms: int,
         max_utterance_ms: int,
+        aec_enabled: bool,
+        aec_min_rms: float,
+        aec_echo_rms: float,
         no_mic: bool = False,
         debug_audio: bool = False,
     ) -> None:
@@ -41,6 +45,7 @@ class FullDuplexMacClient:
             sample_rate=audio_config.sample_rate,
             frame_ms=audio_config.frame_ms,
             aggressiveness=vad_aggressiveness,
+            speech_start_ms=speech_start_ms,
             speech_end_ms=speech_end_ms,
         )
         self.send_chunk_frames = max(1, send_chunk_ms // audio_config.frame_ms)
@@ -50,6 +55,11 @@ class FullDuplexMacClient:
         self.mic_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=200)
         self.player = AudioPlayer(output_device=audio_config.output_device)
         self.mic = MicCapture(audio_config, self.mic_queue)
+        self.echo_controller = EchoController(
+            enabled=aec_enabled,
+            min_rms=aec_min_rms,
+            echo_rms=aec_echo_rms,
+        )
         self._last_state = "LISTENING"
         self._sent_audio_frames = 0
         self._utterance_frames = 0
@@ -81,14 +91,19 @@ class FullDuplexMacClient:
     async def _mic_loop(self, ws) -> None:
         while True:
             frame = await self.mic_queue.get()
-            self._debug_input_level(frame)
-            for result in self.vad.process(frame):
+            echo_result = self.echo_controller.process(
+                frame,
+                playback_active=self.player.is_playing or self._last_state == "BOT_SPEAKING",
+                user_speaking=self.vad.user_speaking,
+            )
+            self._debug_input_level(echo_result)
+            for result in self.vad.process(echo_result.pcm16):
+                if result.user_speaking_started:
+                    print("[user] speaking")
                 if result.should_send and result.pcm16:
                     self._sent_audio_frames += 1
                     self._utterance_frames += 1
                     self._pending_audio_frames.append(result.pcm16)
-                    if self.debug_audio and self._sent_audio_frames == 1:
-                        print("[vad] speech_start")
                     if len(self._pending_audio_frames) >= self.send_chunk_frames:
                         await self._flush_audio(ws)
                     if self.debug_audio and self._sent_audio_frames % 50 == 0:
@@ -101,6 +116,7 @@ class FullDuplexMacClient:
                         await self._end_utterance(ws)
                         continue
                 if result.utterance_ended:
+                    print("[user] stopped")
                     await self._end_utterance(ws)
 
     async def _flush_audio(self, ws) -> None:
@@ -120,17 +136,18 @@ class FullDuplexMacClient:
         self._utterance_frames = 0
         self._pending_audio_frames.clear()
 
-    def _debug_input_level(self, frame: bytes) -> None:
+    def _debug_input_level(self, echo_result) -> None:
         if not self.debug_audio:
             return
         now = monotonic()
         if now - self._last_audio_debug_at < 1.0:
             return
         self._last_audio_debug_at = now
-        pcm = np.frombuffer(frame, dtype=np.int16).astype(np.float32)
-        rms = float(np.sqrt(np.mean(pcm * pcm))) if pcm.size else 0.0
-        peak = int(np.max(np.abs(pcm))) if pcm.size else 0
-        print(f"[mic] rms={rms:.1f} peak={peak} queue={self.mic_queue.qsize()}")
+        print(
+            f"[mic] rms={echo_result.rms:.1f} peak={echo_result.peak} "
+            f"noise={echo_result.noise_floor:.1f} playback={int(echo_result.playback_active)} "
+            f"suppressed={int(echo_result.suppressed)} queue={self.mic_queue.qsize()}"
+        )
 
     async def _recv_loop(self, ws) -> None:
         async for raw in ws:
@@ -189,9 +206,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--frame-ms", type=int, default=20, choices=[10, 20, 30])
     parser.add_argument("--vad", type=int, default=2, choices=[0, 1, 2, 3], help="WebRTC VAD aggressiveness")
-    parser.add_argument("--speech-end-ms", type=int, default=700)
+    parser.add_argument("--speech-start-ms", type=int, default=120)
+    parser.add_argument("--speech-end-ms", type=int, default=500)
     parser.add_argument("--send-chunk-ms", type=int, default=200, help="Aggregate mic audio before each WebSocket send")
     parser.add_argument("--max-utterance-ms", type=int, default=12000, help="Force endpointing after this duration")
+    parser.add_argument("--no-aec", action="store_true", help="Disable local echo/noise suppression before VAD")
+    parser.add_argument("--aec-min-rms", type=float, default=220.0, help="Minimum RMS required before VAD")
+    parser.add_argument("--aec-echo-rms", type=float, default=900.0, help="RMS gate while local TTS playback is active")
     parser.add_argument("--input-device", default=None)
     parser.add_argument("--output-device", default=None)
     parser.add_argument("--no-mic", action="store_true", help="Text-only mode")
@@ -217,9 +238,13 @@ async def amain() -> None:
         session_id=args.session_id,
         audio_config=config,
         vad_aggressiveness=args.vad,
+        speech_start_ms=args.speech_start_ms,
         speech_end_ms=args.speech_end_ms,
         send_chunk_ms=args.send_chunk_ms,
         max_utterance_ms=args.max_utterance_ms,
+        aec_enabled=not args.no_aec,
+        aec_min_rms=args.aec_min_rms,
+        aec_echo_rms=args.aec_echo_rms,
         no_mic=args.no_mic,
         debug_audio=args.debug_audio,
     )
