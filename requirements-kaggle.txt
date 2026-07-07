@@ -9,4 +9,3 @@ funasr>=1.1.14
 transformers>=4.45.0
 accelerate>=0.34.0
 vllm>=0.6.6
-cosyvoice

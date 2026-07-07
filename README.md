@@ -64,10 +64,37 @@ Kaggle Notebook 右侧设置：
 !bash gpu_server/scripts/kaggle_install.sh
 ```
 
-如果 `cosyvoice` 这个 pip 包安装失败，先不要改业务代码，通常是 CosyVoice 的安装源或 Kaggle 镜像环境问题。可以先用下面方式确认其他核心依赖是否安装成功：
+不要用 `pip install cosyvoice` 作为 CosyVoice 安装方式。这个包名在 pip 上不一定对应官方源码结构，常见现象就是：
+
+```text
+ModuleNotFoundError: No module named 'cosyvoice.cli'
+```
+
+正确方式是在 Kaggle 里 clone 官方 CosyVoice 仓库，并安装它自己的依赖：
+
+```bash
+%cd /kaggle/working
+!git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git
+%cd /kaggle/working/CosyVoice
+!pip install -r requirements.txt
+```
+
+然后设置官方仓库路径：
+
+```bash
+%env COSYVOICE_REPO_DIR=/kaggle/working/CosyVoice
+```
+
+可以先用下面方式确认其他核心依赖是否安装成功：
 
 ```bash
 !python -c "import fastapi, uvicorn, funasr, vllm, transformers; print('core deps ok')"
+```
+
+CosyVoice 的验证方式：
+
+```bash
+!PYTHONPATH=/kaggle/working/CosyVoice:/kaggle/working/CosyVoice/third_party/Matcha-TTS python -c "from cosyvoice.cli.cosyvoice import CosyVoice; print('cosyvoice ok')"
 ```
 
 ### 4. 准备模型
@@ -88,6 +115,7 @@ Kaggle Notebook 右侧设置：
 %env FUNASR_VAD_MODEL=/kaggle/input/callrobot-models/speech_fsmn_vad_zh-cn-16k-common-pytorch
 %env FUNASR_PUNC_MODEL=/kaggle/input/callrobot-models/punc_ct-transformer_zh-cn-common-vocab272727-pytorch
 %env COSYVOICE_MODEL=/kaggle/input/callrobot-models/CosyVoice-300M-SFT
+%env COSYVOICE_REPO_DIR=/kaggle/working/CosyVoice
 ```
 
 Kaggle 免费 GPU 显存通常比较紧。Qwen2.5-7B + ASR + TTS 同进程跑不动时，先调低 vLLM 显存占用：

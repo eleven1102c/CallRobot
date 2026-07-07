@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import io
+import sys
 import threading
 import wave
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -18,11 +20,18 @@ class StreamingTTS:
         self.model: Any | None = None
 
     def load(self) -> None:
+        if self.settings.cosyvoice_repo_dir:
+            repo_dir = Path(self.settings.cosyvoice_repo_dir).expanduser().resolve()
+            extra_paths = [repo_dir, repo_dir / "third_party" / "Matcha-TTS"]
+            for path in extra_paths:
+                if path.exists() and str(path) not in sys.path:
+                    sys.path.insert(0, str(path))
+
         try:
             from cosyvoice.cli.cosyvoice import CosyVoice2
 
             self.model = CosyVoice2(self.settings.cosyvoice_model)
-        except Exception:
+        except ImportError:
             from cosyvoice.cli.cosyvoice import CosyVoice
 
             self.model = CosyVoice(self.settings.cosyvoice_model)

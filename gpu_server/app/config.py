@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     funasr_decoder_chunk_look_back: int = 1
 
     cosyvoice_model: str = "/models/CosyVoice-300M-SFT"
+    cosyvoice_repo_dir: str | None = None
     cosyvoice_spk: str = "中文女"
     tts_sample_rate: int = 22050
 

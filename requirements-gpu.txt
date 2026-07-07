@@ -11,4 +11,3 @@ modelscope>=1.17.0
 funasr>=1.1.14
 transformers>=4.45.0
 accelerate>=0.34.0
-cosyvoice
