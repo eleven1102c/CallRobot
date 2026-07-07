@@ -118,6 +118,14 @@ CosyVoice 的验证方式：
 %env COSYVOICE_REPO_DIR=/kaggle/working/CosyVoice
 ```
 
+`CosyVoice-300M-SFT` 是 CosyVoice 1 模型，目录里应当有 `cosyvoice.yaml`。`CosyVoice2-*` 模型目录里才会有 `cosyvoice2.yaml`。服务会根据模型目录里的 yaml 自动选择 `CosyVoice` 或 `CosyVoice2`。
+
+如果日志里仍然出现 `/kaggle/working/models/CosyVoice-300M-SFT/... not found`，说明 `COSYVOICE_MODEL` 没有被设置到你的 Dataset 路径，启动前重新执行：
+
+```bash
+%env COSYVOICE_MODEL=/kaggle/input/你的dataset目录/CosyVoice-300M-SFT
+```
+
 Kaggle 免费 GPU 显存通常比较紧。Qwen2.5-7B + ASR + TTS 同进程跑不动时，先调低 vLLM 显存占用：
 
 ```bash

@@ -27,14 +27,18 @@ class StreamingTTS:
                 if path.exists() and str(path) not in sys.path:
                     sys.path.insert(0, str(path))
 
-        try:
-            from cosyvoice.cli.cosyvoice import CosyVoice2
+        from cosyvoice.cli.cosyvoice import CosyVoice, CosyVoice2
 
-            self.model = CosyVoice2(self.settings.cosyvoice_model)
-        except ImportError:
-            from cosyvoice.cli.cosyvoice import CosyVoice
-
-            self.model = CosyVoice(self.settings.cosyvoice_model)
+        model_dir = Path(self.settings.cosyvoice_model).expanduser().resolve()
+        if (model_dir / "cosyvoice2.yaml").exists():
+            self.model = CosyVoice2(str(model_dir))
+        elif (model_dir / "cosyvoice.yaml").exists():
+            self.model = CosyVoice(str(model_dir))
+        else:
+            raise FileNotFoundError(
+                f"CosyVoice model config not found in {model_dir}. "
+                "Expected cosyvoice.yaml for CosyVoice 1 or cosyvoice2.yaml for CosyVoice 2."
+            )
 
     @staticmethod
     def _wav_bytes(audio: np.ndarray, sample_rate: int) -> bytes:
