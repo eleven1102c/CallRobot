@@ -112,6 +112,7 @@ CosyVoice 的验证方式：
 %env MODEL_DIR=/kaggle/input/callrobot-models
 %env QWEN_MODEL=/kaggle/input/callrobot-models/Qwen2.5-7B-Instruct
 %env FUNASR_MODEL=/kaggle/input/callrobot-models/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online
+%env FUNASR_USE_VAD=false
 %env FUNASR_VAD_MODEL=/kaggle/input/callrobot-models/speech_fsmn_vad_zh-cn-16k-common-pytorch
 %env FUNASR_PUNC_MODEL=/kaggle/input/callrobot-models/punc_ct-transformer_zh-cn-common-vocab272727-pytorch
 %env COSYVOICE_MODEL=/kaggle/input/callrobot-models/CosyVoice-300M-SFT
@@ -119,6 +120,8 @@ CosyVoice 的验证方式：
 ```
 
 `CosyVoice-300M-SFT` 是 CosyVoice 1 模型，目录里应当有 `cosyvoice.yaml`。`CosyVoice2-*` 模型目录里才会有 `cosyvoice2.yaml`。服务会根据模型目录里的 yaml 自动选择 `CosyVoice` 或 `CosyVoice2`。
+
+当前架构由 Mac 端做 Fast VAD 和 endpointing，所以 GPU 侧 FunASR 默认只做 streaming ASR，不再加载 FunASR VAD。不要把 `FUNASR_USE_VAD` 打开，否则 FunASR VAD 可能收到 ASR 的 `chunk_size=[5,10,5]` 并触发类型错误。
 
 如果日志里仍然出现 `/kaggle/working/models/CosyVoice-300M-SFT/... not found`，说明 `COSYVOICE_MODEL` 没有被设置到你的 Dataset 路径，启动前重新执行：
 
@@ -268,6 +271,14 @@ pip install -r requirements-mac.txt
 ./mac_client/scripts/run_mac_client.sh --list-devices
 ```
 
+麦克风自检，确认 macOS 权限和输入设备是否真的采到声音：
+
+```bash
+./mac_client/scripts/check_mic.sh --input-device 0
+```
+
+正常说话时应看到 `rms` 和 `peak` 明显变化。如果一直接近 0，通常是麦克风权限、设备编号或输入源选错。
+
 先用文字模式测试 GPU 服务、LLM、TTS 和本地播放：
 
 ```bash
@@ -284,6 +295,37 @@ pip install -r requirements-mac.txt
   --input-device 0 \
   --output-device 1
 ```
+
+如果全双工模式看起来“没反应”，打开音频调试：
+
+```bash
+./mac_client/scripts/run_mac_client.sh \
+  --server ws://GPU_SERVER_IP:9000/ws \
+  --input-device 0 \
+  --output-device 1 \
+  --debug-audio
+```
+
+Mac 客户端默认用 20ms 帧做 VAD，但会聚合成约 200ms 音频再发给 GPU，避免通过 frp 发送过多 WebSocket 小包。如果 `speech_start` 后长时间没有输出，可以先用更短的结束判定测试：
+
+```bash
+./mac_client/scripts/run_mac_client.sh \
+  --server ws://GPU_SERVER_IP:9000/ws \
+  --input-device 0 \
+  --output-device 1 \
+  --debug-audio \
+  --vad 3 \
+  --speech-end-ms 300 \
+  --max-utterance-ms 6000
+```
+
+排查判断：
+
+- 没有 `[mic] rms=...`：麦克风流没启动，检查 macOS 麦克风权限、依赖安装、设备编号。
+- 有 `[mic] rms=...` 但没有 `[vad] speech_start`：VAD 没触发，试试 `--vad 0` 或靠近麦克风说话。
+- 有 `[vad] speech_start` 但没有 `[vad] end_utterance`：环境一直被判定有声音，戴耳机、降低背景声，试 `--vad 3 --speech-end-ms 300`。
+- 有 `[vad] speech_start` 但没有 `[mic] captured_frames=...`：WebSocket 发送可能被阻塞，确认 frp 链路稳定，或把 `--send-chunk-ms` 调到 `400`。
+- 有 `[vad] end_utterance` 但没有 `[asr]`：音频已发出，检查 GPU 服务日志和 WebSocket 连接。
 
 命令行里可以直接输入文本触发一轮对话，也可以使用：
 

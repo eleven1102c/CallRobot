@@ -74,3 +74,9 @@ class FastVadEndpoint:
             results.append(VadResult(should_send=False, utterance_ended=True))
 
         return results
+
+    def reset(self) -> None:
+        self._preroll.clear()
+        self._triggered = False
+        self._speech_run = 0
+        self._silence_run = 0

@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     qwen_top_p: float = 0.9
 
     funasr_model: str = "/models/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online"
-    funasr_vad_model: str = "/models/speech_fsmn_vad_zh-cn-16k-common-pytorch"
+    funasr_use_vad: bool = False
+    funasr_vad_model: str | None = "/models/speech_fsmn_vad_zh-cn-16k-common-pytorch"
     funasr_punc_model: str | None = None
     funasr_chunk_size: str = "5,10,5"
     funasr_encoder_chunk_look_back: int = 4

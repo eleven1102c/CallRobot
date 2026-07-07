@@ -20,9 +20,10 @@ class StreamingASR:
 
         kwargs: dict[str, Any] = {
             "model": self.settings.funasr_model,
-            "vad_model": self.settings.funasr_vad_model,
             "disable_update": True,
         }
+        if self.settings.funasr_use_vad and self.settings.funasr_vad_model:
+            kwargs["vad_model"] = self.settings.funasr_vad_model
         if self.settings.funasr_punc_model:
             kwargs["punc_model"] = self.settings.funasr_punc_model
         self.model = AutoModel(**kwargs)
