@@ -10,9 +10,16 @@ class Settings(BaseSettings):
 
     qwen_model: str = "/models/Qwen2.5-7B-Instruct"
     qwen_tensor_parallel_size: int = 1
-    qwen_gpu_memory_utilization: float = 0.88
-    qwen_max_model_len: int = 8192
-    qwen_max_tokens: int = 512
+    qwen_gpu_memory_utilization: float = 0.72
+    qwen_max_model_len: int = 4096
+    qwen_max_tokens: int = 256
+    qwen_dtype: str = "float16"
+    qwen_quantization: str | None = None
+    qwen_max_num_seqs: int = 1
+    qwen_max_num_batched_tokens: int = 2048
+    qwen_cpu_offload_gb: float = 0.0
+    qwen_swap_space: int = 2
+    qwen_enforce_eager: bool = True
     qwen_temperature: float = 0.7
     qwen_top_p: float = 0.9
 

@@ -17,14 +17,22 @@ class StreamingLLM:
         from vllm import AsyncEngineArgs, AsyncLLMEngine
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.settings.qwen_model, trust_remote_code=True)
-        args = AsyncEngineArgs(
-            model=self.settings.qwen_model,
-            tensor_parallel_size=self.settings.qwen_tensor_parallel_size,
-            gpu_memory_utilization=self.settings.qwen_gpu_memory_utilization,
-            max_model_len=self.settings.qwen_max_model_len,
-            trust_remote_code=True,
-            enforce_eager=False,
-        )
+        engine_kwargs = {
+            "model": self.settings.qwen_model,
+            "tensor_parallel_size": self.settings.qwen_tensor_parallel_size,
+            "gpu_memory_utilization": self.settings.qwen_gpu_memory_utilization,
+            "max_model_len": self.settings.qwen_max_model_len,
+            "dtype": self.settings.qwen_dtype,
+            "max_num_seqs": self.settings.qwen_max_num_seqs,
+            "max_num_batched_tokens": self.settings.qwen_max_num_batched_tokens,
+            "cpu_offload_gb": self.settings.qwen_cpu_offload_gb,
+            "swap_space": self.settings.qwen_swap_space,
+            "trust_remote_code": True,
+            "enforce_eager": self.settings.qwen_enforce_eager,
+        }
+        if self.settings.qwen_quantization:
+            engine_kwargs["quantization"] = self.settings.qwen_quantization
+        args = AsyncEngineArgs(**engine_kwargs)
         self.engine = AsyncLLMEngine.from_engine_args(args)
 
     def _prompt(self, history: list[dict[str, str]], user_text: str) -> str:

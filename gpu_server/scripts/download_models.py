@@ -8,8 +8,15 @@ from modelscope import snapshot_download
 
 MODEL_DIR = Path(os.environ.get("MODEL_DIR", "models")).resolve()
 
+# MODELS = {
+#     "Qwen2.5-7B-Instruct": "Qwen/Qwen2.5-7B-Instruct",
+#     "speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online",
+#     "speech_fsmn_vad_zh-cn-16k-common-pytorch": "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
+#     "punc_ct-transformer_zh-cn-common-vocab272727-pytorch": "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
+#     "CosyVoice-300M-SFT": "iic/CosyVoice-300M-SFT",
+# }
+
 MODELS = {
-    "Qwen2.5-7B-Instruct": "Qwen/Qwen2.5-7B-Instruct",
     "speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online",
     "speech_fsmn_vad_zh-cn-16k-common-pytorch": "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
     "punc_ct-transformer_zh-cn-common-vocab272727-pytorch": "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",

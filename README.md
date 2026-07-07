@@ -155,6 +155,57 @@ curl http://你的-frp-公网域名或IP:公网端口/health
 - 如果 `/health` 能访问但 `/ws` 连不上，优先检查 frp 是否支持 WebSocket upgrade，以及公网 URL 是否用了正确的 `ws://` 或 `wss://`。
 - 如果模型加载 OOM，先降低 `QWEN_GPU_MEMORY_UTILIZATION`、`QWEN_MAX_MODEL_LEN`，或临时换更小的 Qwen 模型跑通链路。
 
+### 8. Qwen OOM 调整
+
+Kaggle 常见 T4/P100 只有 16GB 显存。原始 FP16 的 Qwen2.5-7B-Instruct 权重大约已经接近显存上限，再加 vLLM KV cache、ASR、TTS，很容易启动 OOM。当前 `kaggle_start.sh` 已经使用较保守默认值：
+
+```bash
+QWEN_GPU_MEMORY_UTILIZATION=0.72
+QWEN_MAX_MODEL_LEN=4096
+QWEN_MAX_TOKENS=256
+QWEN_MAX_NUM_SEQS=1
+QWEN_MAX_NUM_BATCHED_TOKENS=2048
+QWEN_ENFORCE_EAGER=true
+```
+
+如果还是 OOM，按这个顺序调：
+
+1. 先把上下文降到 2048：
+
+```bash
+%env QWEN_MAX_MODEL_LEN=2048
+%env QWEN_MAX_NUM_BATCHED_TOKENS=1024
+%env QWEN_MAX_TOKENS=128
+%env QWEN_GPU_MEMORY_UTILIZATION=0.65
+```
+
+2. 如果权重本身就放不下，换 Qwen2.5-7B 的 AWQ/GPTQ 量化模型，并设置：
+
+```bash
+%env QWEN_MODEL=/kaggle/input/callrobot-models/Qwen2.5-7B-Instruct-AWQ
+%env QWEN_QUANTIZATION=awq
+%env QWEN_DTYPE=float16
+```
+
+3. 如果仍然差一点显存，可以临时打开 CPU offload，代价是速度下降：
+
+```bash
+%env QWEN_CPU_OFFLOAD_GB=4
+```
+
+4. 如果只是为了先跑通链路，直接换小模型：
+
+```bash
+%env QWEN_MODEL=/kaggle/input/callrobot-models/Qwen2.5-3B-Instruct
+%env QWEN_QUANTIZATION=
+```
+
+判断标准：
+
+- OOM 出现在 `AsyncLLMEngine.from_engine_args` 附近：主要是 Qwen/vLLM 显存不够。
+- OOM 出现在 ASR 或 TTS 加载后：先让 Qwen 独占更多显存，或者把 ASR/TTS 换小模型/拆服务。
+- 16GB 显存上最稳方案是 `Qwen2.5-7B-Instruct-AWQ + max_model_len=2048/4096 + max_num_seqs=1`。
+
 ## Mac 测试端部署
 
 Mac 端负责：
