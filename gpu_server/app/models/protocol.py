@@ -1,10 +1,10 @@
-from enum import StrEnum
+from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
-class DialogueState(StrEnum):
+class DialogueState(Enum):
     LISTENING = "LISTENING"
     THINKING = "THINKING"
     BOT_SPEAKING = "BOT_SPEAKING"
