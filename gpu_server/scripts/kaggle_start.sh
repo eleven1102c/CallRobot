@@ -27,6 +27,7 @@ export FUNASR_VAD_MODEL="${FUNASR_VAD_MODEL:-${MODEL_DIR}/speech_fsmn_vad_zh-cn-
 export FUNASR_PUNC_MODEL="${FUNASR_PUNC_MODEL:-${MODEL_DIR}/punc_ct-transformer_zh-cn-common-vocab272727-pytorch}"
 export COSYVOICE_MODEL="${COSYVOICE_MODEL:-${MODEL_DIR}/CosyVoice-300M-SFT}"
 export COSYVOICE_REPO_DIR="${COSYVOICE_REPO_DIR:-/kaggle/working/CosyVoice}"
+export TTS_FLUSH_CHARS="${TTS_FLUSH_CHARS:-8}"
 
 cd "${PROJECT_DIR}"
 python -m uvicorn gpu_server.app.main:app --host "${HOST}" --port "${PORT}"

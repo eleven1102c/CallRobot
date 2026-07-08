@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     cosyvoice_repo_dir: str | None = None
     cosyvoice_spk: str = "中文女"
     tts_sample_rate: int = 22050
+    tts_flush_chars: int = 8
 
     false_interrupt_min_chars: int = 2
     interrupt_confidence_threshold: float = 0.62

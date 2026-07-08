@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 from contextlib import asynccontextmanager
+from time import monotonic
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
@@ -48,12 +49,33 @@ async def cancel_generation(session_id: str) -> None:
 
 
 def should_flush_tts(buffer: str) -> bool:
-    return len(buffer) >= 18 or any(buffer.endswith(p) for p in ("。", "！", "？", "\n", ".", "!", "?"))
+    return len(buffer) >= settings.tts_flush_chars or any(buffer.endswith(p) for p in ("。", "！", "？", "\n", ".", "!", "?"))
+
+
+def elapsed_ms(started_at: float) -> int:
+    return int((monotonic() - started_at) * 1000)
+
+
+async def send_server_timing(
+    ws: WebSocket,
+    session_id: str,
+    request_id: str,
+    stage: str,
+    started_at: float,
+    **meta,
+) -> None:
+    payload = {"stage": stage, "elapsed_ms": elapsed_ms(started_at)}
+    payload.update(meta)
+    await send_event(ws, ServerEvent(type="server_timing", session_id=session_id, request_id=request_id, meta=payload))
 
 
 async def run_bot_turn(ws: WebSocket, session_id: str, user_text: str) -> None:
     session = await state_manager.get(session_id)
     request_id = session.new_request_id()
+    turn_started_at = monotonic()
+    first_token_sent = False
+    first_tts_flush_sent = False
+    first_tts_audio_sent = False
     await state_manager.transition(session_id, DialogueState.THINKING)
     await send_event(ws, ServerEvent(type="state", session_id=session_id, state=DialogueState.THINKING, request_id=request_id))
 
@@ -72,9 +94,26 @@ async def run_bot_turn(ws: WebSocket, session_id: str, user_text: str) -> None:
             current.bot_text_buffer = full_text
             tts_buffer += delta
             await send_event(ws, ServerEvent(type="llm_token", session_id=session_id, text=delta, request_id=request_id))
+            if not first_token_sent:
+                first_token_sent = True
+                await send_server_timing(ws, session_id, request_id, "first_llm_token", turn_started_at)
 
             if should_flush_tts(tts_buffer):
+                if not first_tts_flush_sent:
+                    first_tts_flush_sent = True
+                    await send_server_timing(
+                        ws,
+                        session_id,
+                        request_id,
+                        "first_tts_flush",
+                        turn_started_at,
+                        chars=len(tts_buffer),
+                        text=tts_buffer,
+                    )
                 async for audio in tts.stream(tts_buffer, current.tts_cancel_event):
+                    if not first_tts_audio_sent:
+                        first_tts_audio_sent = True
+                        await send_server_timing(ws, session_id, request_id, "first_tts_audio", turn_started_at)
                     await send_event(
                         ws,
                         ServerEvent(
@@ -88,7 +127,22 @@ async def run_bot_turn(ws: WebSocket, session_id: str, user_text: str) -> None:
 
         current = await state_manager.get(session_id)
         if tts_buffer and not current.tts_cancel_event.is_set():
+            if not first_tts_flush_sent:
+                first_tts_flush_sent = True
+                await send_server_timing(
+                    ws,
+                    session_id,
+                    request_id,
+                    "first_tts_flush",
+                    turn_started_at,
+                    chars=len(tts_buffer),
+                    text=tts_buffer,
+                    final=True,
+                )
             async for audio in tts.stream(tts_buffer, current.tts_cancel_event):
+                if not first_tts_audio_sent:
+                    first_tts_audio_sent = True
+                    await send_server_timing(ws, session_id, request_id, "first_tts_audio", turn_started_at)
                 await send_event(
                     ws,
                     ServerEvent(

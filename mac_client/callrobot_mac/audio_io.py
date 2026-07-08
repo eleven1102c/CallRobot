@@ -5,6 +5,7 @@ import io
 import threading
 import wave
 from contextlib import suppress
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -71,8 +72,15 @@ class MicCapture:
 
 
 class AudioPlayer:
-    def __init__(self, output_device: int | str | None = None) -> None:
+    def __init__(
+        self,
+        output_device: int | str | None = None,
+        playback_observer: Callable[[np.ndarray, int], None] | None = None,
+        playback_start_observer: Callable[[], None] | None = None,
+    ) -> None:
         self.output_device = output_device
+        self.playback_observer = playback_observer
+        self.playback_start_observer = playback_start_observer
         self.queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=32)
         self._cancel_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -112,6 +120,8 @@ class AudioPlayer:
             self._cancel_event.clear()
             try:
                 audio, sample_rate = decode_wav(wav_bytes)
+                if self.playback_observer is not None:
+                    self.playback_observer(audio, sample_rate)
                 await asyncio.to_thread(self._play_blocking, audio, sample_rate)
             except Exception as exc:
                 print(f"[player] failed to play chunk: {exc}", flush=True)
@@ -120,6 +130,8 @@ class AudioPlayer:
         if self._cancel_event.is_set():
             return
         self._playing.set()
+        if self.playback_start_observer is not None:
+            self.playback_start_observer()
         try:
             sd.play(audio, samplerate=sample_rate, device=self.output_device, blocking=True)
         finally:

@@ -32,6 +32,7 @@ export FUNASR_PUNC_MODEL="${FUNASR_PUNC_MODEL:-${MODEL_DIR}/punc_ct-transformer_
 export COSYVOICE_MODEL="${COSYVOICE_MODEL:-${MODEL_DIR}/CosyVoice-300M-SFT}"
 export COSYVOICE_REPO_DIR="${COSYVOICE_REPO_DIR}"
 export COSYVOICE_SPK="${COSYVOICE_SPK:-中文女}"
+export TTS_FLUSH_CHARS="${TTS_FLUSH_CHARS:-8}"
 
 cd "${PROJECT_DIR}"
 python3 -m uvicorn gpu_server.app.main:app --host "${HOST}" --port "${PORT}"
