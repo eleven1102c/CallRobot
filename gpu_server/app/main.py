@@ -140,7 +140,18 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
             if event.type == "audio":
                 pcm = base64.b64decode(event.audio_b64 or "")
-                partial = await asr.transcribe_chunk(event.session_id, pcm, is_final=False)
+                try:
+                    partial = await asr.transcribe_chunk(event.session_id, pcm, is_final=False)
+                except Exception as exc:
+                    await send_event(
+                        ws,
+                        ServerEvent(
+                            type="asr_error",
+                            session_id=event.session_id,
+                            meta={"stage": "partial", "error": repr(exc)},
+                        ),
+                    )
+                    continue
                 if partial:
                     session.last_user_text = partial
                     await send_event(ws, ServerEvent(type="asr_partial", session_id=event.session_id, text=partial))
@@ -166,9 +177,30 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 text = event.text or session.last_user_text
                 if event.type == "end_utterance" and event.audio_b64:
                     final_pcm = base64.b64decode(event.audio_b64)
-                    text = await asr.transcribe_chunk(event.session_id, final_pcm, is_final=True) or text
+                    try:
+                        text = await asr.transcribe_utterance(event.session_id, final_pcm) or text
+                    except Exception as exc:
+                        await send_event(
+                            ws,
+                            ServerEvent(
+                                type="asr_error",
+                                session_id=event.session_id,
+                                is_final=True,
+                                meta={"stage": "final", "error": repr(exc)},
+                            ),
+                        )
+                        continue
                 text = (text or "").strip()
                 if not text:
+                    await send_event(
+                        ws,
+                        ServerEvent(
+                            type="asr_empty",
+                            session_id=event.session_id,
+                            is_final=True,
+                            meta={"reason": "empty_final_text"},
+                        ),
+                    )
                     continue
                 await state_manager.transition(event.session_id, DialogueState.THINKING)
                 await send_event(ws, ServerEvent(type="asr_final", session_id=event.session_id, text=text, is_final=True))

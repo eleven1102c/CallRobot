@@ -5,13 +5,14 @@ import asyncio
 import base64
 from contextlib import suppress
 from time import monotonic
+from urllib.parse import urlparse, urlunparse
 from uuid import uuid4
 
 import websockets
 
 from callrobot_mac.audio_io import AudioConfig, AudioPlayer, MicCapture, list_devices
 from callrobot_mac.echo_control import EchoController
-from callrobot_mac.protocol import audio_event, control_event, end_utterance_event, parse_server_event, text_event
+from callrobot_mac.protocol import ClientEvent, audio_event, control_event, parse_server_event, text_event
 from callrobot_mac.vad import FastVadEndpoint
 
 
@@ -19,6 +20,15 @@ def device_arg(value: str | None) -> int | str | None:
     if value is None:
         return None
     return int(value) if value.isdigit() else value
+
+
+def normalize_ws_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme == "https":
+        return urlunparse(parsed._replace(scheme="wss"))
+    if parsed.scheme == "http":
+        return urlunparse(parsed._replace(scheme="ws"))
+    return url
 
 
 class FullDuplexMacClient:
@@ -38,7 +48,7 @@ class FullDuplexMacClient:
         no_mic: bool = False,
         debug_audio: bool = False,
     ) -> None:
-        self.server_url = server_url
+        self.server_url = normalize_ws_url(server_url)
         self.session_id = session_id
         self.audio_config = audio_config
         self.vad = FastVadEndpoint(
@@ -64,6 +74,7 @@ class FullDuplexMacClient:
         self._sent_audio_frames = 0
         self._utterance_frames = 0
         self._pending_audio_frames: list[bytes] = []
+        self._utterance_audio_frames: list[bytes] = []
         self._last_audio_debug_at = 0.0
 
     async def run(self) -> None:
@@ -104,6 +115,7 @@ class FullDuplexMacClient:
                     self._sent_audio_frames += 1
                     self._utterance_frames += 1
                     self._pending_audio_frames.append(result.pcm16)
+                    self._utterance_audio_frames.append(result.pcm16)
                     if len(self._pending_audio_frames) >= self.send_chunk_frames:
                         await self._flush_audio(ws)
                     if self.debug_audio and self._sent_audio_frames % 50 == 0:
@@ -130,11 +142,22 @@ class FullDuplexMacClient:
         await self._flush_audio(ws)
         print(f"[vad] end_utterance captured_frames={self._sent_audio_frames}")
         if self._sent_audio_frames:
-            await ws.send(end_utterance_event(self.session_id))
+            utterance_pcm = b"".join(self._utterance_audio_frames)
+            if self.debug_audio:
+                print(f"[mic] final_utterance_bytes={len(utterance_pcm)}")
+            await ws.send(
+                ClientEvent(
+                    type="end_utterance",
+                    session_id=self.session_id,
+                    audio_b64=base64.b64encode(utterance_pcm).decode("ascii"),
+                    meta={"sample_rate": self.audio_config.sample_rate},
+                ).to_json()
+            )
         self.vad.reset()
         self._sent_audio_frames = 0
         self._utterance_frames = 0
         self._pending_audio_frames.clear()
+        self._utterance_audio_frames.clear()
 
     def _debug_input_level(self, echo_result) -> None:
         if not self.debug_audio:
@@ -161,6 +184,10 @@ class FullDuplexMacClient:
                 print(f"\r[asr] {event.get('text', '')}", end="", flush=True)
             elif event_type == "asr_final":
                 print(f"\n[user] {event.get('text', '')}")
+            elif event_type == "asr_empty":
+                print(f"\n[asr_empty] {event.get('meta', {})}")
+            elif event_type == "asr_error":
+                print(f"\n[asr_error] {event.get('meta', {})}")
             elif event_type == "llm_token":
                 print(event.get("text", ""), end="", flush=True)
             elif event_type == "tts_audio":

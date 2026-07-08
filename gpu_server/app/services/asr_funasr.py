@@ -31,6 +31,8 @@ class StreamingASR:
     async def transcribe_chunk(self, session_id: str, pcm16: bytes, is_final: bool = False) -> str:
         if self.model is None:
             raise RuntimeError("StreamingASR is not loaded")
+        if not pcm16:
+            return ""
 
         wav = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32) / 32768.0
         async with self._lock:
@@ -51,6 +53,32 @@ class StreamingASR:
             return str(item.get("text", "")).strip()
 
         return await asyncio.to_thread(_infer)
+
+    async def transcribe_utterance(self, session_id: str, pcm16: bytes) -> str:
+        if self.model is None:
+            raise RuntimeError("StreamingASR is not loaded")
+        if not pcm16:
+            return ""
+
+        wav = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32) / 32768.0
+
+        def _infer() -> str:
+            result = self.model.generate(
+                input=wav,
+                cache={},
+                is_final=True,
+                chunk_size=[int(x) for x in self.settings.funasr_chunk_size.split(",")],
+                encoder_chunk_look_back=self.settings.funasr_encoder_chunk_look_back,
+                decoder_chunk_look_back=self.settings.funasr_decoder_chunk_look_back,
+            )
+            if not result:
+                return ""
+            item = result[0] if isinstance(result, list) else result
+            return str(item.get("text", "")).strip()
+
+        text = await asyncio.to_thread(_infer)
+        await self.reset(session_id)
+        return text
 
     async def reset(self, session_id: str) -> None:
         async with self._lock:
