@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import soundfile as sf
+import torch
 
 
 def add_cosyvoice_paths(repo_dir: Path) -> None:
@@ -61,11 +63,54 @@ def extract_audio(item: dict[str, Any]) -> np.ndarray:
     return np.asarray(audio).reshape(-1)
 
 
+def resample(audio: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray:
+    if src_rate == dst_rate or audio.size == 0:
+        return audio.astype(np.float32)
+    duration = audio.size / float(src_rate)
+    dst_size = max(1, int(round(duration * dst_rate)))
+    src_x = np.linspace(0.0, duration, num=audio.size, endpoint=False)
+    dst_x = np.linspace(0.0, duration, num=dst_size, endpoint=False)
+    return np.interp(dst_x, src_x, audio).astype(np.float32)
+
+
+def load_prompt_wav(path: str) -> torch.Tensor:
+    wav_path = Path(path).expanduser().resolve()
+    if not wav_path.exists():
+        raise FileNotFoundError(f"prompt wav not found: {wav_path}")
+    audio, sample_rate = sf.read(str(wav_path), dtype="float32")
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    if sample_rate != 16000:
+        audio = resample(audio, sample_rate, 16000)
+    return torch.from_numpy(audio.astype(np.float32)).unsqueeze(0)
+
+
+def inference_generator(model: Any, mode: str, text: str, spk: str, prompt_text: str, prompt_wav: str, instruct_text: str):
+    mode = mode.lower()
+    if mode == "sft":
+        return model.inference_sft(text, spk, stream=True)
+    if mode == "zero_shot":
+        if not prompt_text:
+            raise ValueError("--prompt-text is required for --mode zero_shot")
+        if not prompt_wav:
+            raise ValueError("--prompt-wav is required for --mode zero_shot")
+        return model.inference_zero_shot(text, prompt_text, load_prompt_wav(prompt_wav), stream=True)
+    if mode == "instruct2":
+        if not prompt_wav:
+            raise ValueError("--prompt-wav is required for --mode instruct2")
+        return model.inference_instruct2(text, instruct_text, load_prompt_wav(prompt_wav), stream=True)
+    raise ValueError("--mode must be one of: sft, zero_shot, instruct2")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Check CosyVoice import, model load, and optional inference")
     parser.add_argument("--repo-dir", default=os.environ.get("COSYVOICE_REPO_DIR", "third_party/CosyVoice"))
     parser.add_argument("--model-dir", default=os.environ.get("COSYVOICE_MODEL", "models/CosyVoice-300M-SFT"))
     parser.add_argument("--spk", default=os.environ.get("COSYVOICE_SPK", "中文女"))
+    parser.add_argument("--mode", default=os.environ.get("COSYVOICE_MODE", "sft"), choices=["sft", "zero_shot", "instruct2"])
+    parser.add_argument("--prompt-wav", default=os.environ.get("COSYVOICE_PROMPT_WAV", ""))
+    parser.add_argument("--prompt-text", default=os.environ.get("COSYVOICE_PROMPT_TEXT", ""))
+    parser.add_argument("--instruct-text", default=os.environ.get("COSYVOICE_INSTRUCT_TEXT", ""))
     parser.add_argument("--text", default="你好，这是一次语音合成环境测试。")
     parser.add_argument("--infer", action="store_true", help="Run a short TTS inference after loading")
     parser.add_argument("--out", default="/tmp/cosyvoice_check.wav")
@@ -79,6 +124,7 @@ def main() -> None:
     print(f"[check] repo_dir={repo_dir}")
     print(f"[check] model_dir={model_dir}")
     print(f"[check] spk={args.spk}")
+    print(f"[check] mode={args.mode}")
 
     if not repo_dir.exists():
         raise FileNotFoundError(f"CosyVoice repo_dir does not exist: {repo_dir}")
@@ -106,9 +152,17 @@ def main() -> None:
         print("[check] inference skipped. Pass --infer to synthesize a short wav.")
         return
 
-    print("[check] running inference_sft ...")
+    print(f"[check] running inference mode={args.mode} ...")
     chunks: list[np.ndarray] = []
-    for item in model.inference_sft(args.text, args.spk, stream=True):
+    for item in inference_generator(
+        model,
+        args.mode,
+        args.text,
+        args.spk,
+        args.prompt_text,
+        args.prompt_wav,
+        args.instruct_text,
+    ):
         chunks.append(extract_audio(item))
 
     if not chunks:

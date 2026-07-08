@@ -33,7 +33,11 @@ class Settings(BaseSettings):
 
     cosyvoice_model: str = "/models/CosyVoice-300M-SFT"
     cosyvoice_repo_dir: str | None = None
+    cosyvoice_mode: str = "sft"
     cosyvoice_spk: str = "中文女"
+    cosyvoice_prompt_wav: str | None = None
+    cosyvoice_prompt_text: str | None = None
+    cosyvoice_instruct_text: str | None = None
     tts_sample_rate: int = 22050
     tts_flush_chars: int = 8
 

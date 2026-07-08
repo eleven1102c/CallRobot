@@ -21,6 +21,7 @@ MODELS = {
     "speech_fsmn_vad_zh-cn-16k-common-pytorch": "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
     "punc_ct-transformer_zh-cn-common-vocab272727-pytorch": "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch",
     "CosyVoice-300M-SFT": "iic/CosyVoice-300M-SFT",
+    "CosyVoice2-0.5B": "iic/CosyVoice2-0.5B",
 }
 
 
