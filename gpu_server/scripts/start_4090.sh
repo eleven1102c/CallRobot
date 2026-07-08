@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-PORT="${GPU_SERVER_PORT:-9000}"
+PORT="${GPU_SERVER_PORT:-6006}"
 HOST="${GPU_SERVER_HOST:-0.0.0.0}"
 MODEL_DIR="${MODEL_DIR:-${PROJECT_DIR}/models}"
 COSYVOICE_REPO_DIR="${COSYVOICE_REPO_DIR:-${PROJECT_DIR}/third_party/CosyVoice}"
@@ -11,6 +11,14 @@ export PYTHONPATH="${PROJECT_DIR}:${COSYVOICE_REPO_DIR}:${COSYVOICE_REPO_DIR}/th
 export MODEL_DIR="${MODEL_DIR}"
 export GPU_SERVER_HOST="${HOST}"
 export GPU_SERVER_PORT="${PORT}"
+
+export MODEL_DIR=/root/CallRobot/models
+export QWEN_MODEL=/root/CallRobot/models/Qwen2.5-7B-Instruct
+export QWEN_DTYPE=float16
+export FUNASR_MODEL=/root/autodl-tmp/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online
+export FUNASR_VAD_MODEL=/root/autodl-tmp/speech_fsmn_vad_zh-cn-16k-common-pytorch
+export FUNASR_PUNC_MODEL=/root/autodl-tmp/punc_ct-transformer_zh-cn-common-vocab272727-pytorch
+export COSYVOICE_MODEL=/root/autodl-tmp/CosyVoice2-0.5B
 
 export QWEN_MODEL="${QWEN_MODEL:-${MODEL_DIR}/Qwen2.5-7B-Instruct}"
 export QWEN_GPU_MEMORY_UTILIZATION="${QWEN_GPU_MEMORY_UTILIZATION:-0.82}"

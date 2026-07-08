@@ -10,8 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import soundfile as sf
-import torch
 
 from gpu_server.app.config import Settings
 
@@ -45,28 +43,13 @@ class StreamingTTS:
                 "Expected cosyvoice.yaml for CosyVoice 1 or cosyvoice2.yaml for CosyVoice 2."
             )
 
-    def _prompt_speech_16k(self) -> Any:
+    def _prompt_wav_path(self) -> str:
         if not self.settings.cosyvoice_prompt_wav:
             raise ValueError("COSYVOICE_PROMPT_WAV is required for zero_shot/instruct2 CosyVoice mode")
         wav_path = Path(self.settings.cosyvoice_prompt_wav).expanduser().resolve()
         if not wav_path.exists():
             raise FileNotFoundError(f"CosyVoice prompt wav not found: {wav_path}")
-        audio, sample_rate = sf.read(str(wav_path), dtype="float32")
-        if audio.ndim > 1:
-            audio = audio.mean(axis=1)
-        if sample_rate != 16000:
-            audio = self._resample(audio, sample_rate, 16000)
-        return torch.from_numpy(audio.astype(np.float32)).unsqueeze(0)
-
-    @staticmethod
-    def _resample(audio: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray:
-        if src_rate == dst_rate or audio.size == 0:
-            return audio.astype(np.float32)
-        duration = audio.size / float(src_rate)
-        dst_size = max(1, int(round(duration * dst_rate)))
-        src_x = np.linspace(0.0, duration, num=audio.size, endpoint=False)
-        dst_x = np.linspace(0.0, duration, num=dst_size, endpoint=False)
-        return np.interp(dst_x, src_x, audio).astype(np.float32)
+        return str(wav_path)
 
     def _inference_generator(self, text: str):
         if self.model is None:
@@ -86,7 +69,7 @@ class StreamingTTS:
             return self.model.inference_zero_shot(
                 text,
                 self.settings.cosyvoice_prompt_text,
-                self._prompt_speech_16k(),
+                self._prompt_wav_path(),
                 stream=True,
             )
 
@@ -96,7 +79,7 @@ class StreamingTTS:
             return self.model.inference_instruct2(
                 text,
                 self.settings.cosyvoice_instruct_text or "",
-                self._prompt_speech_16k(),
+                self._prompt_wav_path(),
                 stream=True,
             )
 

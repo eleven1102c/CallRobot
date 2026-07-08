@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+COSYVOICE_MODEL=/root/autodl-tmp/CosyVoice-300M-SFT/
+
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 COSYVOICE_REPO_DIR="${COSYVOICE_REPO_DIR:-${PROJECT_DIR}/third_party/CosyVoice}"
 MODEL_DIR="${MODEL_DIR:-${PROJECT_DIR}/models}"

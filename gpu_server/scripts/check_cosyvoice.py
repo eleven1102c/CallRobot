@@ -9,8 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import soundfile as sf
-import torch
 
 
 def add_cosyvoice_paths(repo_dir: Path) -> None:
@@ -63,26 +61,11 @@ def extract_audio(item: dict[str, Any]) -> np.ndarray:
     return np.asarray(audio).reshape(-1)
 
 
-def resample(audio: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray:
-    if src_rate == dst_rate or audio.size == 0:
-        return audio.astype(np.float32)
-    duration = audio.size / float(src_rate)
-    dst_size = max(1, int(round(duration * dst_rate)))
-    src_x = np.linspace(0.0, duration, num=audio.size, endpoint=False)
-    dst_x = np.linspace(0.0, duration, num=dst_size, endpoint=False)
-    return np.interp(dst_x, src_x, audio).astype(np.float32)
-
-
-def load_prompt_wav(path: str) -> torch.Tensor:
+def prompt_wav_path(path: str) -> str:
     wav_path = Path(path).expanduser().resolve()
     if not wav_path.exists():
         raise FileNotFoundError(f"prompt wav not found: {wav_path}")
-    audio, sample_rate = sf.read(str(wav_path), dtype="float32")
-    if audio.ndim > 1:
-        audio = audio.mean(axis=1)
-    if sample_rate != 16000:
-        audio = resample(audio, sample_rate, 16000)
-    return torch.from_numpy(audio.astype(np.float32)).unsqueeze(0)
+    return str(wav_path)
 
 
 def inference_generator(model: Any, mode: str, text: str, spk: str, prompt_text: str, prompt_wav: str, instruct_text: str):
@@ -94,11 +77,11 @@ def inference_generator(model: Any, mode: str, text: str, spk: str, prompt_text:
             raise ValueError("--prompt-text is required for --mode zero_shot")
         if not prompt_wav:
             raise ValueError("--prompt-wav is required for --mode zero_shot")
-        return model.inference_zero_shot(text, prompt_text, load_prompt_wav(prompt_wav), stream=True)
+        return model.inference_zero_shot(text, prompt_text, prompt_wav_path(prompt_wav), stream=True)
     if mode == "instruct2":
         if not prompt_wav:
             raise ValueError("--prompt-wav is required for --mode instruct2")
-        return model.inference_instruct2(text, instruct_text, load_prompt_wav(prompt_wav), stream=True)
+        return model.inference_instruct2(text, instruct_text, prompt_wav_path(prompt_wav), stream=True)
     raise ValueError("--mode must be one of: sft, zero_shot, instruct2")
 
 
